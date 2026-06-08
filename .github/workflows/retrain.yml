@@ -1,4 +1,4 @@
-name: Retrain Model
+name: MLflow CI Advanced
 
 on:
   push:
@@ -11,19 +11,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Run actions/checkout@v4
+        uses: actions/checkout@v4
         with:
-          python-version: "3.11"
+          submodules: recursive
 
-      - run: |
-          pip install mlflow
-          pip install pandas
-          pip install scikit-learn
-          pip install matplotlib
-          pip install seaborn
-          pip install dagshub
+      - name: Set up Python 3.11.2
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.2"
 
-      - run: |
-          cd MLProject
-          mlflow run .
+      - name: Check Env
+        run: |
+          python --version
+          pip --version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mlflow==2.19.0 pandas numpy scikit-learn matplotlib joblib PyYAML seaborn dagshub
+
+      - name: Run mlflow project
+        run: mlflow run MLProject --env-manager=local
+
+      - name: Get latest MLflow run_id
+        id: latest-run
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import yaml
+
+          candidates = []
+          for meta_path in Path("mlruns").glob("*/*/meta.yaml"):
+              if "models" in meta_path.parts or "datasets" in meta_path.parts:
+                  continue
+              with meta_path.open() as file:
+                  meta = yaml.safe_load(file)
+              candidates.append((meta.get("start_time", 0), meta.get("run_id")))
+
+          if not candidates:
+              raise SystemExit("No MLflow run_id found.")
+
+          run_id = sorted(candidates)[-1][1]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"run_id={run_id}\n")
+          print(f"Latest run_id: {run_id}")
+          PY
+
+      - name: Install Python dependencies
+        run: |
+          pip list
+
+      - name: Upload to GitHub Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-training-artifacts
+          path: |
+            mlruns/
