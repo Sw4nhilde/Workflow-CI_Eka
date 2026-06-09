@@ -73,5 +73,3 @@ with mlflow.start_run() as run:
     mlflow.log_artifacts(str(model_dir), artifact_path="model")
 
     print(score)
-
-solution 1
