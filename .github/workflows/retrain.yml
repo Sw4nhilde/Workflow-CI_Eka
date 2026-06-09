@@ -59,13 +59,102 @@ jobs:
           print(f"Latest run_id: {run_id}")
           PY
 
-      - name: Install Python dependencies
-        run: |
-          pip list
-
       - name: Upload to GitHub Artifact
         uses: actions/upload-artifact@v4
         with:
           name: mlflow-training-artifacts
           path: |
             mlruns/
+
+  
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: train-build-push
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download MLflow artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mlflow-training-artifacts
+          path: mlruns/
+
+      - name: Find and copy model to standard location
+        run: |
+          # Cari model terbaru dari MLflow
+          MODEL_PATH=$(find mlruns -name "model" -type d | head -1)
+          if [ -z "$MODEL_PATH" ]; then
+            echo "Model not found in artifacts!"
+            exit 1
+          fi
+          echo "Found model at: $MODEL_PATH"
+          # Copy ke folder model/ untuk Docker build
+          mkdir -p model
+          cp -r $MODEL_PATH/* model/
+          ls -la model/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/churn-model:${{ github.sha }} .
+          docker tag ${{ secrets.DOCKER_USERNAME }}/churn-model:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/churn-model:latest
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/churn-model:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/churn-model:latest
+
+      - name: Upload Docker image info
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-info
+          path: |
+            image_digest.txt
+          retention-days: 7
+
+      - name: Save image digest
+        run: |
+          docker inspect ${{ secrets.DOCKER_USERNAME }}/churn-model:latest --format='{{index .RepoDigests 0}}' > image_digest.txt
+          cat image_digest.txt
+
+
+  upload-monitoring-files:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Upload Prometheus config
+        uses: actions/upload-artifact@v4
+        with:
+          name: prometheus-config
+          path: prometheus.yml
+          retention-days: 30
+
+      - name: Upload Prometheus exporter
+        uses: actions/upload-artifact@v4
+        with:
+          name: prometheus-exporter
+          path: prometheus_exporter.py
+          retention-days: 30
+
+      - name: Upload test script
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-script
+          path: test_model.py
+          retention-days: 30
