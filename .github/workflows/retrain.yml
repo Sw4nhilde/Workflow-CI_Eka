@@ -74,62 +74,80 @@ jobs:
     runs-on: ubuntu-latest
     needs: train-build-push
     if: github.ref == 'refs/heads/main'
-
+  
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+  
       - name: Download MLflow artifacts
         uses: actions/download-artifact@v4
         with:
           name: mlflow-training-artifacts
-          path: ./
-
-      - name: Find and copy model to standard location
+          path: ./artifacts
+  
+      - name: Debug - List downloaded files
         run: |
-          # Cari model terbaru dari MLflow
-          MODEL_PATH=$(find mlruns -name "model" -type d | head -1)
-          if [ -z "$MODEL_PATH" ]; then
-            echo "Model not found in artifacts!"
+          echo "=== Artifacts directory ==="
+          ls -la artifacts/
+          echo "=== Find everything ==="
+          find artifacts/ -type f | head -20
+          echo "=== Find model directories ==="
+          find artifacts/ -name "model" -type d
+  
+      - name: Copy model to standard location
+        run: |
+          # Try different possible model locations
+          if [ -d "artifacts/model" ]; then
+            echo "Model found in artifacts/model"
+            cp -r artifacts/model/* model/
+          elif [ -d "artifacts/MLProject/model" ]; then
+            echo "Model found in artifacts/MLProject/model"
+            cp -r artifacts/MLProject/model/* model/
+          elif [ -d "artifacts/mlruns" ]; then
+            echo "Looking for model in mlruns"
+            MODEL_PATH=$(find artifacts/mlruns -name "model" -type d | head -1)
+            if [ -n "$MODEL_PATH" ]; then
+              cp -r $MODEL_PATH/* model/
+            fi
+          else
+            echo "ERROR: Model not found!"
+            echo "Full directory structure:"
+            find artifacts/ -type d
             exit 1
           fi
-          echo "Found model at: $MODEL_PATH"
-          # Copy ke folder model/ untuk Docker build
-          mkdir -p model
-          cp -r $MODEL_PATH/* model/
-          ls -la model/
-
+          
+          echo "=== Model directory contents ==="
+          ls -la model/ || echo "Model directory empty!"
+  
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
+  
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-
+  
       - name: Build Docker image
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/churn-model:${{ github.sha }} .
           docker tag ${{ secrets.DOCKER_USERNAME }}/churn-model:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/churn-model:latest
-
+  
       - name: Push Docker image
         run: |
           docker push ${{ secrets.DOCKER_USERNAME }}/churn-model:${{ github.sha }}
           docker push ${{ secrets.DOCKER_USERNAME }}/churn-model:latest
-
+  
+      - name: Save image digest
+        run: |
+          docker inspect ${{ secrets.DOCKER_USERNAME }}/churn-model:latest --format='{{index .RepoDigests 0}}' > image_digest.txt
+  
       - name: Upload Docker image info
         uses: actions/upload-artifact@v4
         with:
           name: docker-image-info
-          path: |
-            image_digest.txt
+          path: image_digest.txt
           retention-days: 7
-
-      - name: Save image digest
-        run: |
-          docker inspect ${{ secrets.DOCKER_USERNAME }}/churn-model:latest --format='{{index .RepoDigests 0}}' > image_digest.txt
-          cat image_digest.txt
 
 
   upload-monitoring-files:
