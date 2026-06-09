@@ -83,7 +83,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mlflow-training-artifacts
-          path: mlruns/
+          path: ./
 
       - name: Find and copy model to standard location
         run: |
