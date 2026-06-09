@@ -1,6 +1,7 @@
 import mlflow
 import mlflow.sklearn
 import shutil
+import os
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix
@@ -8,13 +9,33 @@ from sklearn.model_selection import train_test_split
 
 import pandas as pd
 from pathlib import Path
-import dagshub
 
-dagshub.init(
-    repo_owner="Sw4nhilde",
-    repo_name="Membangun_model_Muhammad-Eka-Mandiri-Sujanto",
-    mlflow=True
-)
+# Check if running in GitHub Actions
+if os.getenv('GITHUB_ACTIONS') == 'true':
+    # In CI/CD - use DagsHub token
+    import dagshub
+    
+    # Get token from environment variable (set in GitHub workflow)
+    dagshub_token = os.getenv('DAGSHUB_TOKEN')
+    if not dagshub_token:
+        raise ValueError("DAGSHUB_TOKEN environment variable not set in GitHub Actions")
+    
+    dagshub.init(
+        repo_owner="Sw4nhilde",
+        repo_name="Membangun_model_Muhammad-Eka-Mandiri-Sujanto",
+        mlflow=True,
+        token=dagshub_token  # Pass token directly
+    )
+    print("Running in GitHub Actions - using DagsHub token authentication")
+else:
+    # Local development - uses browser OAuth
+    import dagshub
+    dagshub.init(
+        repo_owner="Sw4nhilde",
+        repo_name="Membangun_model_Muhammad-Eka-Mandiri-Sujanto",
+        mlflow=True
+    )
+    print("Running locally - using browser authentication")
 
 mlflow.set_experiment("customer_churn_modeling")
 mlflow.sklearn.autolog()
@@ -72,4 +93,4 @@ with mlflow.start_run() as run:
     mlflow.sklearn.save_model(model, path=str(model_dir))
     mlflow.log_artifacts(str(model_dir), artifact_path="model")
 
-    print(score)
+    print(f"Model accuracy: {score}")
