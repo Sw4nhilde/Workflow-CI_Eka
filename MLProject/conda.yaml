@@ -1,0 +1,19 @@
+name: churn-ci
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.11
+  - pip
+
+  - pip:
+      - pandas
+      - numpy
+      - scikit-learn
+      - matplotlib
+      - seaborn
+      - mlflow
+      - dagshub
+
+
