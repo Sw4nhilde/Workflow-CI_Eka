@@ -96,28 +96,33 @@ jobs:
   
       - name: Copy model to standard location
         run: |
-          # Try different possible model locations
-          if [ -d "artifacts/model" ]; then
-            echo "Model found in artifacts/model"
-            cp -r artifacts/model/* model/
-          elif [ -d "artifacts/MLProject/model" ]; then
-            echo "Model found in artifacts/MLProject/model"
-            cp -r artifacts/MLProject/model/* model/
-          elif [ -d "artifacts/mlruns" ]; then
-            echo "Looking for model in mlruns"
-            MODEL_PATH=$(find artifacts/mlruns -name "model" -type d | head -1)
-            if [ -n "$MODEL_PATH" ]; then
-              cp -r $MODEL_PATH/* model/
+          # Search for any model directory or pickle file
+          MODEL_FOUND=""
+          
+          # Look for MLflow model directory
+          for dir in $(find . -type d -name "model" 2>/dev/null); do
+            if [ -f "$dir/python_model.pkl" ] || [ -f "$dir/model.pkl" ]; then
+              MODEL_FOUND=$dir
+              break
             fi
-          else
-            echo "ERROR: Model not found!"
-            echo "Full directory structure:"
-            find artifacts/ -type d
+          done
+          
+          # If no model directory found, look for pickle files
+          if [ -z "$MODEL_FOUND" ]; then
+            MODEL_FOUND=$(find . -name "*.pkl" -type f | head -1 | xargs dirname)
+          fi
+          
+          if [ -z "$MODEL_FOUND" ]; then
+            echo "ERROR: No model found!"
+            echo "All files:"
+            find . -type f
             exit 1
           fi
           
-          echo "=== Model directory contents ==="
-          ls -la model/ || echo "Model directory empty!"
+          echo "Found model at: $MODEL_FOUND"
+          mkdir -p model
+          cp -r $MODEL_FOUND/* model/
+          ls -la model/
   
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
