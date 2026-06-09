@@ -85,43 +85,20 @@ jobs:
           name: mlflow-training-artifacts
           path: ./artifacts
   
-      - name: Debug - List downloaded files
+      - name: Find and copy model to standard location
         run: |
-          echo "=== Artifacts directory ==="
-          ls -la artifacts/
-          echo "=== Find everything ==="
-          find artifacts/ -type f | head -20
-          echo "=== Find model directories ==="
-          find artifacts/ -name "model" -type d
-  
-      - name: Copy model to standard location
-        run: |
-          # Search for any model directory or pickle file
-          MODEL_FOUND=""
+          # Find the model in artifacts
+          MODEL_PATH=$(find artifacts -name "model" -type d | head -1)
           
-          # Look for MLflow model directory
-          for dir in $(find . -type d -name "model" 2>/dev/null); do
-            if [ -f "$dir/python_model.pkl" ] || [ -f "$dir/model.pkl" ]; then
-              MODEL_FOUND=$dir
-              break
-            fi
-          done
-          
-          # If no model directory found, look for pickle files
-          if [ -z "$MODEL_FOUND" ]; then
-            MODEL_FOUND=$(find . -name "*.pkl" -type f | head -1 | xargs dirname)
-          fi
-          
-          if [ -z "$MODEL_FOUND" ]; then
-            echo "ERROR: No model found!"
-            echo "All files:"
-            find . -type f
+          if [ -z "$MODEL_PATH" ]; then
+            echo "Model not found!"
             exit 1
           fi
           
-          echo "Found model at: $MODEL_FOUND"
+          echo "Found model at: $MODEL_PATH"
+          # Copy to root/model for Docker
           mkdir -p model
-          cp -r $MODEL_FOUND/* model/
+          cp -r $MODEL_PATH/* model/
           ls -la model/
   
       - name: Set up Docker Buildx
