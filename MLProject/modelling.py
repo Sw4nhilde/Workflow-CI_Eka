@@ -4,7 +4,7 @@ import shutil
 import os
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from sklearn.model_selection import train_test_split
 
 import pandas as pd
@@ -25,15 +25,10 @@ else:
     )
     print("Running locally - using DagsHub tracking")
 
-# Set experiment
-mlflow.set_experiment("customer_churn_modeling")
-mlflow.sklearn.autolog()
+# Clear any existing runs
+os.environ.pop('MLFLOW_RUN_ID', None)
 
-# End any existing active run
-if mlflow.active_run():
-    mlflow.end_run()
-
-# Start new run
+# Start a new run
 with mlflow.start_run() as run:
     run_id = run.info.run_id
     run_id_file = Path(__file__).resolve().parent / "latest_run_id.txt"
@@ -56,10 +51,10 @@ with mlflow.start_run() as run:
     model.fit(X_train, y_train)
 
     # Evaluate
-    score = model.score(X_test, y_test)
     y_pred = model.predict(X_test)
+    score = accuracy_score(y_test, y_pred)
 
-    # Log metrics and artifacts
+    # Log metrics
     mlflow.log_metric("accuracy", score)
     mlflow.log_text(
         classification_report(y_test, y_pred),
@@ -70,7 +65,7 @@ with mlflow.start_run() as run:
         "confusion_matrix.txt"
     )
     
-    # Save model
+    # Save and log model
     model_dir = Path(__file__).resolve().parent / "model"
     if model_dir.exists():
         shutil.rmtree(model_dir)
